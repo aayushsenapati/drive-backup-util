@@ -3,9 +3,10 @@ package main
 import (
     "bufio"
     "context"
+    "time"
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "io"
     "log"
     "net/http"
     "os/exec"
@@ -14,14 +15,17 @@ import (
     "encoding/base64"
     "strings"
     "os"
-
+    git "github.com/go-git/go-git/v5"
+    // "github.com/go-git/go-git/v5/plumbing"
+    // "github.com/go-git/go-git/v5/plumbing/object"
+    // "github.com/go-git/go-git/v5/plumbing/transport/http"
     "golang.org/x/oauth2"
     "golang.org/x/oauth2/google"
     "google.golang.org/api/drive/v3"
 )
 
 func main() {
-    b, err := ioutil.ReadFile("credentials.json")
+    b, err := os.ReadFile("credentials.json")
     if err != nil {
         log.Fatalf("Unable to read client secret file: %v", err)
     }
@@ -41,41 +45,60 @@ func main() {
     // Check if Git is initialized in the "backup" folder
     if _, err := os.Stat("backup/.git"); os.IsNotExist(err) {
         // Initialize Git in the "backup" folder
-        cmd := exec.Command("git", "init")
-        cmd.Dir = "backup"
-        err = cmd.Run()
+        _,err:= git.PlainInit("backup", false)
         if err != nil {
             log.Fatalf("Unable to initialize Git: %v", err)
+            os.Exit(1)
         }
-        
+        fmt.Println("Git initialized in the backup folder")
+    } else if err != nil {
+        log.Fatalf("Unable to check if Git is initialized: %v", err)
+        os.Exit(1)
     }
 
 
     // Add all files to Git
-    cmd := exec.Command("git", "add", "-A")
-    cmd.Dir = "backup"
-    err = cmd.Run()
+    repo, err := git.PlainOpen("backup")
     if err != nil {
-        log.Fatalf("Unable to add files to Git: %v", err)
+        log.Fatalf("Unable to open Git repository: %v", err)
+        os.Exit(1)
     }
 
+    worktree, err := repo.Worktree()
+    if err != nil {
+        log.Fatalf("Unable to get worktree: %v", err)
+        os.Exit(1)
+    }
+
+    _,err = worktree.Add(".")
+    if err != nil {
+        log.Fatalf("Unable to add files: %v", err)
+        os.Exit(1)
+    }
     // Commit the changes
-    cmd = exec.Command("git", "commit", "-m", "Backup commit")
-    cmd.Dir = "backup"
-    err = cmd.Run()
-    if err != nil {
-        log.Println("Unable to commit changes:", err)
-    }
 
+    _,err = fmt.Printf("%d", time.Now().Unix())
+    _, err = worktree.Commit("Commit", &git.CommitOptions{})
+    if err != nil {
+        log.Fatalf("Unable to commit changes: %v", err)
+        os.Exit(1)
+    }
 
     // Get the latest commit hash
-    cmd = exec.Command("git", "rev-parse", "HEAD")
-    cmd.Dir = "backup"
-    commitHashBytes, err := cmd.Output()
+    commitIter, err := repo.Log(&git.LogOptions{})
     if err != nil {
-        log.Fatalf("Unable to get latest commit hash: %v", err)
+        log.Fatalf("Unable to get commit iterator: %v", err)
+        os.Exit(1)
     }
-    commitHash := strings.TrimSpace(string(commitHashBytes))
+
+    latestCommit, err := commitIter.Next()
+    if err != nil {
+        log.Fatalf("Unable to get commit hash: %v", err)
+        os.Exit(1)
+    }
+    commitHash := latestCommit.Hash.String()
+
+
     fmt.Println("Commit hash:", commitHash)
 
 
@@ -337,7 +360,7 @@ func downloadFile(srv *drive.Service, fileId string) (string, error) {
     }
     defer file.Body.Close()
 
-    bytes, err := ioutil.ReadAll(file.Body)
+    bytes, err := io.ReadAll(file.Body)
     if err != nil {
         return "", err
     }
@@ -347,7 +370,7 @@ func downloadFile(srv *drive.Service, fileId string) (string, error) {
 
 func updateFile(srv *drive.Service, fileId, newContent string) error {
     // Create a new file with the new content
-    newFile, err := ioutil.TempFile("", "drive")
+    newFile, err := os.CreateTemp("", "drive")
     if err != nil {
         return err
     }
