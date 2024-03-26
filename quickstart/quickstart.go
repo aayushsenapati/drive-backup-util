@@ -1,7 +1,7 @@
 package main
 
 import (
-    "bufio"
+    // "bufio"
     "context"
     "time"
     "encoding/json"
@@ -25,7 +25,7 @@ import (
 )
 
 func main() {
-    b, err := os.ReadFile("credentials.json")
+    b, err := os.ReadFile("/secrets/credentials.json")
     if err != nil {
         log.Fatalf("Unable to read client secret file: %v", err)
     }
@@ -312,21 +312,11 @@ func deletePath(srv *drive.Service, path string, backupFolderID string) error {
 }
 
 func getClient(config *oauth2.Config) *http.Client {
-    tokFile := "token.json"
+    tokFile := "/secrets/token.json"
     tok, err := tokenFromFile(tokFile)
     if err != nil {
-        tok = getTokenFromWeb(config)
-        saveToken(tokFile, tok)
-    } else {
-        reader := bufio.NewReader(os.Stdin)
-        fmt.Print("Do you want to logout? (yes/no): ")
-        text, _ := reader.ReadString('\n')
-        if text == "yes\n" {
-            os.Remove(tokFile)
-            tok = getTokenFromWeb(config)
-            saveToken(tokFile, tok)
-        }
-    }
+        log.Fatalf("Unable to retrieve token from file: %v", err)
+    } 
     return config.Client(context.Background(), tok)
 }
 
