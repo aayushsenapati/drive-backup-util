@@ -304,7 +304,7 @@ func deletePath(srv *drive.Service, path string, backupFolderID string) error {
 }
 
 func getClient(config *oauth2.Config) *http.Client {
-	tokFile := "token.json"
+	tokFile := "/secrets/token.json"
 	tok, err := tokenFromFile(tokFile)
 	if err != nil {
 		log.Fatalf("Error in reading token file: %v", err)

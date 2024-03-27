@@ -93,18 +93,30 @@ spec:
     spec:
       template:
         spec:
+          initContainers:
+          - name: init-backup
+            image: aayushnagarr/drive-linux:1.2
+            command: ["sh", "-c", "mkdir -p /backup/ && cp -r /app/backup/* /backup/"]
+            volumeMounts:
+            - name: backup-volume
+              mountPath: "/app/backup"
           containers:
           - name: my-go-container
-            image: aayushnagarr/dri:latest
-            command: ["/app/quickstart.exe"]  # Change this to the path of your Go script
+            image: aayushnagarr/drive-linux:1.2
+            command: ["/app/quickstart-linux"]
             volumeMounts:
             - name: secret-volume
               mountPath: "/secrets"
               readOnly: true
+            - name: backup-volume
+              mountPath: "/app/backup"
           volumes:
           - name: secret-volume
             secret:
               secretName: my-secret
+          - name: backup-volume
+            persistentVolumeClaim:
+              claimName: backup-pvc
           restartPolicy: OnFailure
 `, cronJobName, frequency)
 
