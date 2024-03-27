@@ -3,7 +3,6 @@ module quickstart
 go 1.20
 
 require (
-	github.com/go-git/go-git/v5 v5.11.0
 	golang.org/x/oauth2 v0.18.0
 	google.golang.org/api v0.171.0
 )

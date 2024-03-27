@@ -3,10 +3,9 @@ package main
 import (
     // "bufio"
     "context"
-    "time"
     "encoding/json"
     "fmt"
-    "io"
+    "io/ioutil"
     "log"
     "net/http"
     "os/exec"
@@ -15,17 +14,14 @@ import (
     "encoding/base64"
     "strings"
     "os"
-    git "github.com/go-git/go-git/v5"
-    // "github.com/go-git/go-git/v5/plumbing"
-    // "github.com/go-git/go-git/v5/plumbing/object"
-    // "github.com/go-git/go-git/v5/plumbing/transport/http"
+
     "golang.org/x/oauth2"
     "golang.org/x/oauth2/google"
     "google.golang.org/api/drive/v3"
 )
 
 func main() {
-    b, err := os.ReadFile("/secrets/credentials.json")
+    b, err := ioutil.ReadFile("credentials.json")
     if err != nil {
         log.Fatalf("Unable to read client secret file: %v", err)
     }
@@ -45,60 +41,41 @@ func main() {
     // Check if Git is initialized in the "backup" folder
     if _, err := os.Stat("backup/.git"); os.IsNotExist(err) {
         // Initialize Git in the "backup" folder
-        _,err:= git.PlainInit("backup", false)
+        cmd := exec.Command("git", "init")
+        cmd.Dir = "backup"
+        err = cmd.Run()
         if err != nil {
             log.Fatalf("Unable to initialize Git: %v", err)
-            os.Exit(1)
         }
-        fmt.Println("Git initialized in the backup folder")
-    } else if err != nil {
-        log.Fatalf("Unable to check if Git is initialized: %v", err)
-        os.Exit(1)
+        
     }
 
 
     // Add all files to Git
-    repo, err := git.PlainOpen("backup")
+    cmd := exec.Command("git", "add", "-A")
+    cmd.Dir = "backup"
+    err = cmd.Run()
     if err != nil {
-        log.Fatalf("Unable to open Git repository: %v", err)
-        os.Exit(1)
+        log.Fatalf("Unable to add files to Git: %v", err)
     }
 
-    worktree, err := repo.Worktree()
-    if err != nil {
-        log.Fatalf("Unable to get worktree: %v", err)
-        os.Exit(1)
-    }
-
-    _,err = worktree.Add(".")
-    if err != nil {
-        log.Fatalf("Unable to add files: %v", err)
-        os.Exit(1)
-    }
     // Commit the changes
-
-    _,err = fmt.Printf("%d", time.Now().Unix())
-    _, err = worktree.Commit("Commit", &git.CommitOptions{})
+    cmd = exec.Command("git", "commit", "--allow-empty","-m", "Backup commit")
+    cmd.Dir = "backup"
+    err = cmd.Run()
     if err != nil {
-        log.Fatalf("Unable to commit changes: %v", err)
-        os.Exit(1)
+        log.Println("Unable to commit changes:", err)
     }
+
 
     // Get the latest commit hash
-    commitIter, err := repo.Log(&git.LogOptions{})
+    cmd = exec.Command("git", "rev-parse", "HEAD")
+    cmd.Dir = "backup"
+    commitHashBytes, err := cmd.Output()
     if err != nil {
-        log.Fatalf("Unable to get commit iterator: %v", err)
-        os.Exit(1)
+        log.Fatalf("Unable to get latest commit hash: %v", err)
     }
-
-    latestCommit, err := commitIter.Next()
-    if err != nil {
-        log.Fatalf("Unable to get commit hash: %v", err)
-        os.Exit(1)
-    }
-    commitHash := latestCommit.Hash.String()
-
-
+    commitHash := strings.TrimSpace(string(commitHashBytes))
     fmt.Println("Commit hash:", commitHash)
 
 
@@ -312,11 +289,12 @@ func deletePath(srv *drive.Service, path string, backupFolderID string) error {
 }
 
 func getClient(config *oauth2.Config) *http.Client {
-    tokFile := "/secrets/token.json"
+    tokFile := "token.json"
     tok, err := tokenFromFile(tokFile)
     if err != nil {
         log.Fatalf("Unable to retrieve token from file: %v", err)
     } 
+    
     return config.Client(context.Background(), tok)
 }
 
@@ -350,7 +328,7 @@ func downloadFile(srv *drive.Service, fileId string) (string, error) {
     }
     defer file.Body.Close()
 
-    bytes, err := io.ReadAll(file.Body)
+    bytes, err := ioutil.ReadAll(file.Body)
     if err != nil {
         return "", err
     }
@@ -360,7 +338,7 @@ func downloadFile(srv *drive.Service, fileId string) (string, error) {
 
 func updateFile(srv *drive.Service, fileId, newContent string) error {
     // Create a new file with the new content
-    newFile, err := os.CreateTemp("", "drive")
+    newFile, err := ioutil.TempFile("", "drive")
     if err != nil {
         return err
     }
