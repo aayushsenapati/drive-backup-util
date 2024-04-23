@@ -10,7 +10,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: ""  # Added this line
   hostPath:
-    path: /host/code/drive-backup-util/backup
+    path: %s
     type: DirectoryOrCreate
 
 ---

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"runtime"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -48,11 +48,14 @@ func main() {
 	cronJobYAML := generateCronJobYAML(minutes)
 
 	// Prompt for cron job frequency
-	if(runtime.GOOS == "linux") {
-	fmt.Print("Enter backup folder dir relative to minikube mount (/host)")
+	if runtime.GOOS == "linux" {
+		fmt.Print("Enter backup folder dir relative to minikube mount (/host)")
+	} else if runtime.GOOS == "windows" {
+		fmt.Print("Enter backup folder dir relative c drive (/c/Users/...)")
 	} else {
 		fmt.Print("Enter backup folder dir relative to kubernetes root")
 	}
+
 	reader = bufio.NewReader(os.Stdin)
 	input, _ = reader.ReadString('\n')
 	dir := strings.TrimSpace(input)
@@ -75,9 +78,13 @@ func main() {
 	// Check if user wants to logout
 	fmt.Print("Do you want to logout? (yes/no): ")
 	text, _ := reader.ReadString('\n')
-	if text == "yes\n" {
+	if strings.TrimSpace(text) == "yes" {
 		// Remove existing token
+		fmt.Print(text)
 		os.Remove("../config/token.json")
+
+		reader := bufio.NewReader(os.Stdin)
+		_, _ = reader.ReadString('\n')
 		// Re-run login to get new token
 		getClient(config)
 		// Update Kubernetes secret
@@ -121,14 +128,25 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 	}()
 
 	fmt.Println("Opening browser to visit the following URL:")
-	if(runtime.GOOS == "linux") {
+	if runtime.GOOS == "linux" {
+		fmt.Print("In linux login")
 		cmd := exec.Command("xdg-open", authURL)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			fmt.Printf("Unable to open browser: %v, output: %s", err, output)
 			fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 		}
+	} else if runtime.GOOS == "windows" {
+		fmt.Println("MY AUTH URL IS : ", authURL)
+		// cmd := exec.Command("cmd", "/c", "start", "", authURL)
+		// cmd := exec.Command("cmd", "/c", "start", authURL)
+		// err := cmd.Start()
+		// if err != nil {
+		// fmt.Printf("Unable to open browser: %v", err)
+		fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
+		// }
 	}
+	fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 
 	code := <-codeCh
 	tok, err := config.Exchange(context.TODO(), code)
@@ -179,6 +197,11 @@ func generatePvcYAML(dir string) string {
 	if err != nil {
 		log.Fatalf("Unable to read cron job template: %v", err)
 	}
+	if runtime.GOOS == "linux" {
+		dir = "/host/" + dir
+	} else if runtime.GOOS == "windows" {
+		dir = "/run/desktop/mnt/host/" + dir
+	}
 	return fmt.Sprintf(string(pvcTemplate), dir)
 
 }
@@ -213,28 +236,28 @@ func applyYAML(deployYaml, cronYaml, pvcYaml string) {
 	cmd.Stdin = strings.NewReader(deployYaml)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
-		fmt.Printf("error applying YAML: %v, output: %s", err, output)
+		fmt.Printf("error applying deploy YAML: %v, output: %s", err, output)
 	}
 	// create pvc
 	cmd = exec.Command("kubectl", "apply", "-f", "-")
 	cmd.Stdin = strings.NewReader(pvcYaml)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
-		fmt.Printf("error applying YAML: %v, output: %s", err, output)
+		fmt.Printf("error applying pvc YAML: %v, output: %s", err, output)
 	}
 	// create cronjob
 	cmd = exec.Command("kubectl", "apply", "-f", "-")
 	cmd.Stdin = strings.NewReader(cronYaml)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
-		fmt.Printf("error applying YAML: %v, output: %s", err, output)
+		fmt.Printf("error applying cron YAML: %v, output: %s", err, output)
 	}
 }
 
 func updateKubernetesSecret(tokenFile string) error {
 	cmdDelete := exec.Command("kubectl", "delete", "secret", "token")
 	if err := cmdDelete.Run(); err != nil {
-		return fmt.Errorf("error deleting existing secret: %v", err)
+		fmt.Printf("error deleting existing secret: %v", err)
 	}
 
 	fileFlag := fmt.Sprintf("--from-file=%s", tokenFile)
