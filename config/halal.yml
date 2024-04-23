@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drive-backup-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: drive-backup
+  template:
+    metadata:
+      labels:
+        app: drive-backup
+    spec:
+      containers:
+      - name: drive-backup-container
+        image: aayushsenapati/drive-backup:latest
+        volumeMounts:
+        - name: google-credentials
+          mountPath: /app/credentials.json
+          subPath: credentials.json
+        - name: backup
+          mountPath: /app/backup
+        - name: token
+          mountPath: /app/token.json
+          subPath: token.json
+      volumes:
+      - name: google-credentials
+        secret:
+          secretName: google-credentials
+      - name: backup
+        persistentVolumeClaim:
+          claimName: backup-pvc
+      - name: token
+        secret:
+          secretName: token
