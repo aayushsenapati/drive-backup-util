@@ -31,6 +31,17 @@ var (
 )
 
 func main() {
+	b, err := os.ReadFile("../config/credentials.json")
+	if err != nil {
+		log.Fatalf("Unable to read client secret file: %v", err)
+	}
+
+	config, err := google.ConfigFromJSON(b, drive.DriveScope)
+	if err != nil {
+		log.Fatalf("Unable to parse client secret file to config: %v", err)
+	}
+
+	_ = getClient(config)
 	app = tview.NewApplication()
 
 	form := tview.NewForm()
@@ -41,10 +52,7 @@ func main() {
 		AddInputField("File Path", "", 0, nil, func(text string) {
 			filePath = text
 		}).
-		AddCheckbox("Logout", false, func(checked bool) {
-			logout = checked
-		}).
-		AddButton("Get Authentication URL", func() {
+		AddButton("Re-Login", func() {
 			authURL := getAuthURL()
 			modal := tview.NewModal().
 				SetText(fmt.Sprintf("Authentication URL:\n%s", authURL)).
@@ -70,6 +78,17 @@ func main() {
 
 func getAuthURL() string {
 	// Your authentication URL generation logic here
+
+		os.Remove("../config/token.json")
+
+		// Re-run login to get new token
+		getClient(config)
+		// Update Kubernetes secret
+		err := updateKubernetesSecret("../config/token.json")
+		if err != nil {
+			log.Fatalf("Failed to update Kubernetes secret: %v", err)
+		}
+
 	return "https://example.com/auth"
 }
 
@@ -189,10 +208,16 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 			fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 		}
 	} else if runtime.GOOS == "windows" {
-		fmt.Println("MY AUTH URL IS : ", authURL)
+		// fmt.Println("MY AUTH URL IS : ", authURL)
+		// cmd := exec.Command("cmd", "/c", "start", "", authURL)
+		// cmd := exec.Command("cmd", "/c", "start", authURL)
+		// err := cmd.Start()
+		// if err != nil {
+		// fmt.Printf("Unable to open browser: %v", err)
 		fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
+		// }
 	}
-	fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
+	// fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 
 	code := <-codeCh
 	tok, err := config.Exchange(context.TODO(), code)

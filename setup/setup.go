@@ -137,7 +137,7 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 			fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 		}
 	} else if runtime.GOOS == "windows" {
-		fmt.Println("MY AUTH URL IS : ", authURL)
+		// fmt.Println("MY AUTH URL IS : ", authURL)
 		// cmd := exec.Command("cmd", "/c", "start", "", authURL)
 		// cmd := exec.Command("cmd", "/c", "start", authURL)
 		// err := cmd.Start()
@@ -146,7 +146,7 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 		fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 		// }
 	}
-	fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
+	// fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 
 	code := <-codeCh
 	tok, err := config.Exchange(context.TODO(), code)
