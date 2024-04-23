@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bufio"
+	// "bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,25 +23,18 @@ import (
 )
 
 var (
-	app        *tview.Application
-	cronFreq   int
-	filePath   string
-	logout     bool
-	config     *oauth2.Config
+	app      *tview.Application
+	cronFreq int
+	filePath string
+	logout   bool
+	config   *oauth2.Config
+	url      string
+	modal    *tview.Modal
 )
 
 func main() {
-	b, err := os.ReadFile("../config/credentials.json")
-	if err != nil {
-		log.Fatalf("Unable to read client secret file: %v", err)
-	}
 
-	config, err := google.ConfigFromJSON(b, drive.DriveScope)
-	if err != nil {
-		log.Fatalf("Unable to parse client secret file to config: %v", err)
-	}
-
-	_ = getClient(config)
+	// _ = getClient(config)
 	app = tview.NewApplication()
 
 	form := tview.NewForm()
@@ -53,17 +46,74 @@ func main() {
 			filePath = text
 		}).
 		AddButton("Re-Login", func() {
-			authURL := getAuthURL()
-			modal := tview.NewModal().
-				SetText(fmt.Sprintf("Authentication URL:\n%s", authURL)).
+			// modal := tview.NewModal()
+
+			modal = tview.NewModal().
+				SetText("Please wait for Auth URL").
+				AddButtons([]string{"OK"}).
+				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+					app.SetRoot(form, true)
+				})
+			app.SetRoot(modal, true)
+
+			_ = getAuthURL()
+			fmt.Println("Got auth url")
+		}).
+		AddButton("Apply Configuration", func() {
+
+			 
+			
+			if _, err := os.Stat("../config/token.json"); os.IsNotExist(err) {
+				fmt.Println("Inside not found block")
+				modal = tview.NewModal().
+				SetText("User not logged in. Check your browser for authentication").
+				AddButtons([]string{"OK"}).
+				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+					app.SetRoot(form, true)
+				})
+				app.SetRoot(modal, true)
+				return
+			}
+			
+			saveConfiguration()
+			modal = tview.NewModal().
+				SetText("Applied Configuration").
 				AddButtons([]string{"OK"}).
 				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 					app.SetRoot(form, true)
 				})
 			app.SetRoot(modal, true)
 		}).
-		AddButton("Save", func() {
-			saveConfiguration()
+		AddButton("Stop Backup Service", func() {
+			cmd := exec.Command("kubectl", "delete", "cronjob", "drive-backup-cronjob")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				fmt.Printf("error deleting cronjob: %v, output: %s", err, output)
+			} else {
+				fmt.Println("Cronjob deleted successfully")
+			}
+			cmd = exec.Command("kubectl", "delete", "pvc", "backup-pvc")
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				fmt.Printf("error deleting pvc: %v, output: %s", err, output)
+			} else {
+				fmt.Println("PVC deleted successfully")
+			}
+			cmd = exec.Command("kubectl", "delete", "pv", "backup-pv")
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				fmt.Printf("error deleting pv: %v, output: %s", err, output)
+			} else {
+				fmt.Println("PV deleted successfully")
+			}
+			modal = tview.NewModal().
+				SetText("Stopped Backup Service").
+				AddButtons([]string{"OK"}).
+				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+					app.SetRoot(form, true)
+				})
+			app.SetRoot(modal, true)
+
 		}).
 		AddButton("Quit", func() {
 			app.Stop()
@@ -78,98 +128,48 @@ func main() {
 
 func getAuthURL() string {
 	// Your authentication URL generation logic here
-
-		os.Remove("../config/token.json")
-
-		// Re-run login to get new token
-		getClient(config)
-		// Update Kubernetes secret
-		err := updateKubernetesSecret("../config/token.json")
-		if err != nil {
-			log.Fatalf("Failed to update Kubernetes secret: %v", err)
-		}
-
-	return "https://example.com/auth"
-}
-
-func saveConfiguration() {
 	b, err := os.ReadFile("../config/credentials.json")
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
 
-	config, err = google.ConfigFromJSON(b, drive.DriveScope)
+	config, err := google.ConfigFromJSON(b, drive.DriveScope)
 	if err != nil {
 		log.Fatalf("Unable to parse client secret file to config: %v", err)
 	}
 
+	os.Remove("../config/token.json")
+
+	// Re-run login to get new token
 	getClient(config)
-
-	// Prompt for cron job frequency
-	fmt.Print("Enter the frequency of the cron job in minutes: ")
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
-	cronFreq, err := strconv.Atoi(input)
+	// Update Kubernetes secret
+	err = updateKubernetesSecret("../config/token.json")
 	if err != nil {
-		log.Fatalf("Invalid input: %v", err)
+		log.Fatalf("Failed to update Kubernetes secret: %v", err)
 	}
 
-	// Prompt for backup folder directory
-	var dir string
-	if runtime.GOOS == "linux" {
-		fmt.Print("Enter backup folder dir relative to minikube mount (/host)")
-	} else if runtime.GOOS == "windows" {
-		fmt.Print("Enter backup folder dir relative c drive (/c/Users/...)")
-	} else {
-		fmt.Print("Enter backup folder dir relative to kubernetes root")
-	}
+	return "https://example.com/auth"
+}
 
-	reader = bufio.NewReader(os.Stdin)
-	dir, _ = reader.ReadString('\n')
-	dir = strings.TrimSpace(dir)
-	if err != nil {
-		log.Fatalf("Invalid input: %v", err)
-	}
+func saveConfiguration() {
 
 	// Generate CronJob YAML configuration
 	cronJobYAML := generateCronJobYAML(cronFreq)
 
 	// Generate PVC YAML configuration
-	pvcYaml := generatePvcYAML(dir)
-
-	// Read deployment YAML
-	deploy, err := os.ReadFile("../config/deployment.yml")
-	if err != nil {
-		log.Fatalf("Unable to read deployment YAML: %v", err)
-	}
-	deploymentYAML := string(deploy)
-
+	pvcYaml := generatePvcYAML(filePath)
 	// Apply CronJob YAML to Kubernetes deployment
-	applyYAML(deploymentYAML, cronJobYAML, pvcYaml)
+	applyYAML(cronJobYAML, pvcYaml)
 
-	// Check if user wants to logout
-	fmt.Print("Do you want to logout? (yes/no): ")
-	text, _ := reader.ReadString('\n')
-	if strings.TrimSpace(text) == "yes" {
-		// Remove existing token
-		os.Remove("../config/token.json")
-
-		// Re-run login to get new token
-		getClient(config)
-
-		// Update Kubernetes secret
-		err = updateKubernetesSecret("../config/token.json")
-		if err != nil {
-			log.Fatalf("Failed to update Kubernetes secret: %v", err)
-		}
-	}
 	fmt.Println("Setup complete!")
+
+	return
 }
 
 func getClient(config *oauth2.Config) *http.Client {
 	tokFile := "../config/token.json"
 	tok, err := tokenFromFile(tokFile)
+	fmt.Println("In Get CLient trying to get token")
 	if err != nil {
 		tok = getTokenFromWeb(config)
 		saveToken(tokFile, tok)
@@ -180,16 +180,20 @@ func getClient(config *oauth2.Config) *http.Client {
 func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 	state := randToken()
 	authURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	fmt.Println("In Get Token from web printing authURL	: ", authURL)
 	codeCh := make(chan string)
-
+	fmt.Println("In Get Token from web")
 	go func() {
+		fmt.Println("Inside routine")
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Println("Inside handle func")
 			if r.FormValue("state") != state {
 				http.Error(w, "State invalid", http.StatusBadRequest)
 				codeCh <- "State invalid"
 				return
 			}
 			// send test response
+			fmt.Println("Sending response")
 			w.Write([]byte("Authorization successful! You can close this tab now."))
 
 			codeCh <- r.FormValue("code")
@@ -208,15 +212,18 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 			fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 		}
 	} else if runtime.GOOS == "windows" {
-		// fmt.Println("MY AUTH URL IS : ", authURL)
-		// cmd := exec.Command("cmd", "/c", "start", "", authURL)
-		// cmd := exec.Command("cmd", "/c", "start", authURL)
-		// err := cmd.Start()
-		// if err != nil {
-		// fmt.Printf("Unable to open browser: %v", err)
+		err := exec.Command("rundll32", "url.dll,FileProtocolHandler", authURL).Start()
+		if err != nil {
+			fmt.Printf("Unable to open browser: %v", err)
+		} else {
+			fmt.Println("Browser opened successfully")
+		}
 		fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
-		// }
+
 	}
+	fmt.Println(" Before modal setting")
+	modal.SetText("Authenticated Successfully! You can close this box now.")
+	fmt.Println(" After modal setting")
 	// fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 
 	code := <-codeCh
@@ -267,53 +274,61 @@ func generatePvcYAML(dir string) string {
 	if err != nil {
 		log.Fatalf("Unable to read cron job template: %v", err)
 	}
-	if runtime.GOOS == "linux" {
-		dir = "/host/" + dir
-	} else if runtime.GOOS == "windows" {
-		dir = "/run/desktop/mnt/host/" + dir
+	// get absolute path of dir
+	cmd := exec.Command("readlink", "-f", dir)
+	output, err := cmd.CombinedOutput()
+	fmt.Println("output: ", string(output))
+	if err != nil {
+		fmt.Printf("error getting absolute path of dir: %v, output: %s", err, output)
 	}
+	dir = strings.TrimSpace(string(output))
+		if runtime.GOOS == "linux" {
+			dir = "/host" + dir
+		} else if runtime.GOOS == "windows" {
+			dir = "/run/desktop/mnt/host" + dir
+		}
+
+	fmt.Println("dir:",dir)
+
 	return fmt.Sprintf(string(pvcTemplate), dir)
 
 }
 
-func applyYAML(deployYaml, cronYaml, pvcYaml string) {
-	// delete deployment if it already exists
-	cmd := exec.Command("kubectl", "delete", "deployment", "drive-backup-deployment")
+func applyYAML(cronYaml, pvcYaml string) {
+
+	// delete cronjob if it already exists
+	cmd := exec.Command("kubectl", "delete", "cronjob", "drive-backup-cronjob")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Printf("error deleting deployent: %v, output: %s", err, output)
-	}
-	// delete cronjob if it already exists
-	cmd = exec.Command("kubectl", "delete", "cronjob", "drive-backup-cronjob")
-	output, err = cmd.CombinedOutput()
-	if err != nil {
 		fmt.Printf("error deleting cronjob: %v, output: %s", err, output)
+	} else {
+		fmt.Println("Cronjob deleted successfully")
 	}
 	// delete pv and pvc if they already exist
 	cmd = exec.Command("kubectl", "delete", "pvc", "backup-pvc")
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("error deleting pvc: %v, output: %s", err, output)
+	} else {
+		fmt.Println("PVC deleted successfully")
 	}
 	cmd = exec.Command("kubectl", "delete", "pv", "backup-pv")
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("error deleting pv: %v, output: %s", err, output)
+	} else {
+		fmt.Println("PV deleted successfully")
 	}
 
-	// create deployment
-	cmd = exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(deployYaml)
-	output, err = cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("error applying deploy YAML: %v, output: %s", err, output)
-	}
 	// create pvc
 	cmd = exec.Command("kubectl", "apply", "-f", "-")
 	cmd.Stdin = strings.NewReader(pvcYaml)
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("error applying pvc YAML: %v, output: %s", err, output)
+	} else {
+		fmt.Println("PVC created successfully")
+
 	}
 	// create cronjob
 	cmd = exec.Command("kubectl", "apply", "-f", "-")
@@ -321,6 +336,8 @@ func applyYAML(deployYaml, cronYaml, pvcYaml string) {
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("error applying cron YAML: %v, output: %s", err, output)
+	} else {
+		fmt.Println("Cronjob created successfully")
 	}
 }
 

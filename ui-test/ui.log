@@ -1,0 +1,18 @@
+output:  /home/aadithya/code/drive-backup-util/backup
+
+dir: /host/home/aadithya/code/drive-backup-util/backup
+Cronjob deleted successfully
+PVC deleted successfully
+PV deleted successfully
+PVC created successfully
+Cronjob created successfully
+Setup complete!
+output:  /home/aadithya/code/drive-backup-util/backup
+
+dir: /host/home/aadithya/code/drive-backup-util/backup
+Cronjob deleted successfully
+PVC deleted successfully
+PV deleted successfully
+PVC created successfully
+Cronjob created successfully
+Setup complete!
