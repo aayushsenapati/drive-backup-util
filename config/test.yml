@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+      - name: test-container
+        image: alpine:latest
+        command: ["/bin/sh"]
+        args: ["-c", "while true; do echo hello; sleep 10;done"]
+        volumeMounts:
+        - name: google-credentials
+          mountPath: /app/credentials.json
+          subPath: credentials.json
+        - name: backup
+          mountPath: /app/backup
+        - name: token
+          mountPath: /app/token.json
+          subPath: token.json
+      volumes:
+      - name: google-credentials
+        secret:
+          secretName: google-credentials
+      - name: backup
+        persistentVolumeClaim:
+          claimName: backup-pvc
+      - name: token
+        secret:
+          secretName: token
