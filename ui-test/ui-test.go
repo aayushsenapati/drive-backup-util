@@ -60,6 +60,21 @@ func main() {
 			fmt.Println("Got auth url")
 		}).
 		AddButton("Apply Configuration", func() {
+
+			 
+			
+			if _, err := os.Stat("../config/token.json"); os.IsNotExist(err) {
+				fmt.Println("Inside not found block")
+				modal = tview.NewModal().
+				SetText("User not logged in. Check your browser for authentication").
+				AddButtons([]string{"OK"}).
+				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+					app.SetRoot(form, true)
+				})
+				app.SetRoot(modal, true)
+				return
+			}
+			
 			saveConfiguration()
 			modal = tview.NewModal().
 				SetText("Applied Configuration").
