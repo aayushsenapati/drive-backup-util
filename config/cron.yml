@@ -1,19 +1,36 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: hello
+  name: drive-backup-cronjob
 spec:
   schedule: "*/%d * * * *"
   jobTemplate:
     spec:
       template:
+        metadata:
+          labels:
+            app: drive-backup
         spec:
           containers:
-          - name: hello
-            image: busybox:1.28
-            imagePullPolicy: IfNotPresent
-            command:
-            - /bin/sh
-            - -c
-            - date; echo Hello from the Kubernetes cluster
+          - name: drive-backup-container
+            image: aayushsenapati/drive-backup:latest
+            volumeMounts:
+            - name: google-credentials
+              mountPath: /app/credentials.json
+              subPath: credentials.json
+            - name: backup
+              mountPath: /app/backup
+            - name: token
+              mountPath: /app/token.json
+              subPath: token.json
+          volumes:
+          - name: google-credentials
+            secret:
+              secretName: google-credentials
+          - name: backup
+            persistentVolumeClaim:
+              claimName: backup-pvc
+          - name: token
+            secret:
+              secretName: token
           restartPolicy: OnFailure
