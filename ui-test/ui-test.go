@@ -47,6 +47,7 @@ func main() {
 		}).
 		AddButton("Re-Login", func() {
 			// modal := tview.NewModal()
+			
 			modal = tview.NewModal().
 			SetText("Please wait for Auth URL").
 			AddButtons([]string{"OK"}).
@@ -54,11 +55,50 @@ func main() {
 				app.SetRoot(form, true)
 			})
 			app.SetRoot(modal, true)
+			
 			_ = getAuthURL()
 			fmt.Println("Got auth url")
 			}).
 		AddButton("Apply Configuration", func() {
 			saveConfiguration()
+			modal = tview.NewModal().
+			SetText("Applied Configuration").
+			AddButtons([]string{"OK"}).
+			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+				app.SetRoot(form, true)
+			})
+			app.SetRoot(modal, true)
+		}).
+		AddButton("Stop Backup Service", func() {
+			cmd := exec.Command("kubectl", "delete", "cronjob", "drive-backup-cronjob")
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				fmt.Printf("error deleting cronjob: %v, output: %s", err, output)
+			} else {
+				fmt.Println("Cronjob deleted successfully")
+			}
+			cmd = exec.Command("kubectl", "delete", "pvc", "backup-pvc")
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				fmt.Printf("error deleting pvc: %v, output: %s", err, output)
+			} else {
+				fmt.Println("PVC deleted successfully")
+			}
+			cmd = exec.Command("kubectl", "delete", "pv", "backup-pv")
+			output, err = cmd.CombinedOutput()
+			if err != nil {
+				fmt.Printf("error deleting pv: %v, output: %s", err, output)
+			} else {
+				fmt.Println("PV deleted successfully")
+			}
+			modal = tview.NewModal().
+			SetText("Stopped Backup Service").
+			AddButtons([]string{"OK"}).
+			SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+				app.SetRoot(form, true)
+			})
+			app.SetRoot(modal, true)
+		
 		}).
 		AddButton("Quit", func() {
 			app.Stop()
@@ -107,6 +147,8 @@ func saveConfiguration() {
 	applyYAML(cronJobYAML, pvcYaml)
 	
 	fmt.Println("Setup complete!")
+
+	return
 }
 
 func getClient(config *oauth2.Config) *http.Client {
@@ -155,17 +197,17 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 			fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 		}
 	} else if runtime.GOOS == "windows" {
-		// fmt.Println("MY AUTH URL IS : ", authURL)
-		// cmd := exec.Command("cmd", "/c", "start", "", authURL)
-		// cmd := exec.Command("cmd", "/c", "start", authURL)
-		// err := cmd.Start()
-		// if err != nil {
-		// fmt.Printf("Unable to open browser: %v", err)
+		err := exec.Command("rundll32", "url.dll,FileProtocolHandler", authURL).Start()
+		if err != nil {
+		fmt.Printf("Unable to open browser: %v", err)
+		} else {
+			fmt.Println("Browser opened successfully")
+		}
 		fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
-		// }
+		
 	}
 	fmt.Println(" Before modal setting")
-	modal.SetText(authURL)
+	modal.SetText("Authenticated Successfully! You can close this box now.")
 	fmt.Println(" After modal setting")
 	// fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
 
