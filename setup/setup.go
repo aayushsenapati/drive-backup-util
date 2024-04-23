@@ -5,7 +5,6 @@ import (
     "context"
     "encoding/json"
     "fmt"
-    "io/ioutil"
     "log"
     "net/http"
     "os"
@@ -22,7 +21,7 @@ import (
 )
 
 func main() {
-    b, err := ioutil.ReadFile("credentials.json")
+    b, err := os.ReadFile("../config/credentials.json")
     if err != nil {
         log.Fatalf("Unable to read client secret file: %v", err)
     }
@@ -57,11 +56,11 @@ func main() {
     text, _ := reader.ReadString('\n')
     if text == "yes\n" {
         // Remove existing token
-        os.Remove("token.json")
+        os.Remove("../config/token.json")
         // Re-run login to get new token
         getClient(config)
         // Update Kubernetes secret
-        err = updateKubernetesSecret("token.json")
+        err = updateKubernetesSecret("../config/token.json")
         if err != nil {
             log.Fatalf("Failed to update Kubernetes secret: %v", err)
         }
@@ -69,7 +68,7 @@ func main() {
 }
 
 func getClient(config *oauth2.Config) *http.Client {
-    tokFile := "token.json"
+    tokFile := "../config/token.json"
     tok, err := tokenFromFile(tokFile)
     if err != nil {
         tok = getTokenFromWeb(config)
@@ -97,7 +96,14 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
         log.Fatal(http.ListenAndServe(":8080", nil))
     }()
 
+    fmt.Println("Opening browser to visit the following URL:")
+    cmd := exec.Command("xdg-open", authURL)
+    output, err := cmd.CombinedOutput();
+    if err != nil {
+        log.Fatalf("Unable to open browser: %v, output: %s", err, output)
+    }
     fmt.Printf("Please visit the following URL to authorize the application:\n%s\n", authURL)
+
     code := <-codeCh
     tok, err := config.Exchange(context.TODO(), code)
     if err != nil {
@@ -135,7 +141,7 @@ func tokenFromFile(file string) (*oauth2.Token, error) {
 
 func generateCronJobYAML(minutes int) string {
     frequency := fmt.Sprintf("*/%d * * * *", minutes)
-    return fmt.Sprintf(`apiVersion: v1
+    return fmt.Sprintf(`apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: drive-backup-cronjob
@@ -190,7 +196,7 @@ func updateKubernetesSecret(tokenFile string) error {
         return fmt.Errorf("error deleting existing secret: %v", err)
     }
 
-    cmdCreate := exec.Command("kubectl", "create", "secret", "generic", "token", "--from-file=token.json")
+    cmdCreate := exec.Command("kubectl", "create", "secret", "generic", "token", "--from-file=../config/token.json")
     if err := cmdCreate.Run(); err != nil {
         return fmt.Errorf("error creating new secret: %v", err)
     }
